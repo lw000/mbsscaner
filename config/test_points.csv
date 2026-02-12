@@ -1,0 +1,11 @@
+name,address,data_type,length,scale,unit,description
+test_bool_001,0,bool,1,1,,测试布尔量001
+test_int16_001,1,int16,1,1,,测试16位整数001
+test_uint16_001,2,uint16,1,1,,测试16位无符号整数001
+test_int32_001,3,int32,2,1,,测试32位整数001
+test_uint32_001,5,uint32,2,1,,测试32位无符号整数001
+test_float32_001,7,float32,2,0.01,V,测试32位浮点数001
+test_float64_001,9,float64,4,0.001,Pa,测试64位浮点数001
+test_string_001,13,string,10,1,,测试字符串001
+test_counter_001,23,uint16,1,1,次,测试计数器001
+test_status_001,24,uint16,1,1,,测试状态码001

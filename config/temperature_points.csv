@@ -1,0 +1,9 @@
+name,address,data_type,length,scale,unit,description
+temp_001,0,float32,2,0.1,°C,温度传感器001
+temp_002,2,float32,2,0.1,°C,温度传感器002
+temp_003,4,float32,2,0.1,°C,温度传感器003
+temp_004,6,float32,2,0.1,°C,温度传感器004
+humidity_001,8,float32,2,0.1,%,湿度传感器001
+humidity_002,10,float32,2,0.1,%,湿度传感器002
+status_001,12,bool,1,1,,状态开关001
+alarm_001,13,bool,1,1,,报警信号001

@@ -1,0 +1,14 @@
+name,address,data_type,register_type,length,scale,unit,description
+coil_001,0,bool,coil,1,1,,线圈寄存器001
+coil_002,1,bool,coil,1,1,,线圈寄存器002
+coil_003,2,bool,coil,1,1,,线圈寄存器003
+coil_004,3,bool,coil,1,1,,线圈寄存器004
+coil_005,4,bool,coil,1,1,,线圈寄存器005
+discrete_input_001,0,bool,discrete_input,1,1,,离散输入寄存器001
+discrete_input_002,1,bool,discrete_input,1,1,,离散输入寄存器002
+discrete_input_003,2,bool,discrete_input,1,1,,离散输入寄存器003
+discrete_input_004,3,bool,discrete_input,1,1,,离散输入寄存器004
+discrete_input_005,4,bool,discrete_input,1,1,,离散输入寄存器005
+temp_sensor_001,10,float32,holding_register,2,0.1,°C,温度传感器001
+temp_sensor_002,12,float32,holding_register,2,0.1,°C,温度传感器002
+temp_sensor_003,14,float32,holding_register,2,0.1,°C,温度传感器003

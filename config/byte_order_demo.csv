@@ -1,0 +1,5 @@
+name,address,data_type,register_type,scale,unit,description
+temp_sensor_32bit,100,int32,holding_register,0.1,°C,32位温度传感器
+pressure_sensor_32bit,102,int32,holding_register,0.01,kPa,32位压力传感器
+flow_rate_float,104,float32,holding_register,0.001,m³/s,32位流量计
+voltage_uint32,106,uint32,holding_register,0.01,V,32位电压表

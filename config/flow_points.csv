@@ -1,0 +1,5 @@
+name,address,data_type,register_type,length,scale,unit,description
+tag_001,200,int32,holding_register,2,1,m³/h,流量计001瞬时流量
+tag_002,202,int32,holding_register,2,1,m³/h,流量计002瞬时流量
+tag_1000,200,int32,input_register,2,1,m³/h,流量计001瞬时流量
+tag_1001,202,int32,input_register,2,1,m³/h,流量计002瞬时流量

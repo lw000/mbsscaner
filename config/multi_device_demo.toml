@@ -1,0 +1,81 @@
+# 字节序配置示例 - 设备级别配置
+name = "byte_order_devices_demo"
+display_name = "MBS Scanner Byte Order Demo"
+description = "Demonstrates different byte order configurations at device level"
+
+[modbus]
+# 设备1：西门子 PLC（大端序）
+[[modbus.devices]]
+name = "siemens_plc"
+host = "192.168.1.100"
+port = 502
+slave_id = 1
+timeout = 5
+interval = 2
+points_file = "config/siemens_points.csv"
+byte_order = "big"  # 西门子使用大端序
+
+# 设备2：欧姆龙 PLC（小端序）
+[[modbus.devices]]
+name = "omron_plc"
+host = "192.168.1.101"
+port = 502
+slave_id = 1
+timeout = 5
+interval = 3
+points_file = "config/omron_points.csv"
+byte_order = "little"  # 欧姆龙使用小端序
+
+# 设备3：施耐德 PLC（字节交换）
+[[modbus.devices]]
+name = "schneider_plc"
+host = "192.168.1.102"
+port = 502
+slave_id = 1
+timeout = 5
+interval = 2
+points_file = "config/schneider_points.csv"
+byte_order = "swap"  # 施耐德使用字节交换
+
+# 设备4：三菱 PLC（中端序）
+[[modbus.devices]]
+name = "mitsubishi_plc"
+host = "192.168.1.103"
+port = 502
+slave_id = 1
+timeout = 5
+interval = 4
+points_file = "config/mitsubishi_points.csv"
+byte_order = "middle"  # 三菱使用中端序
+
+# 设备5：默认大端序（不指定byte_order）
+[[modbus.devices]]
+name = "default_device"
+host = "192.168.1.104"
+port = 502
+slave_id = 1
+timeout = 5
+interval = 5
+points_file = "config/default_points.csv"
+# byte_order = "big"  # 默认值，可以省略
+
+[kafka]
+brokers = ["localhost:9092"]
+topic = "modbus_multi_devices"
+compression = "gzip"
+batch_size = 100
+flush_frequency = 1000
+
+[logger]
+level = "info"
+output = "both"
+filename = "logs/multi_devices.log"
+max_size = 100
+max_backups = 5
+max_age = 30
+compress = true
+
+[service]
+name = "mbsscaner_multi"
+display_name = "MBS Scanner Multi Devices"
+description = "Modbus Scanner with Multiple Device Byte Order Support"

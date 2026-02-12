@@ -1,0 +1,36 @@
+# 字节序配置示例
+name = "byte_order_demo"
+display_name = "MBS Scanner Byte Order Demo"
+description = "Demonstrates different byte order configurations"
+
+[modbus]
+# 设备配置：字节序演示
+[[modbus.devices]]
+name = "byte_order_demo_device"
+host = "127.0.0.1"
+port = 502
+slave_id = 1
+timeout = 5
+interval = 5
+points_file = "config/byte_order_demo.csv"
+byte_order = "big"
+
+[kafka]
+brokers = ["localhost:9092"]
+topic = "byte_order_demo"
+compression = "gzip"
+batch_size = 50
+flush_frequency = 1000
+
+[logger]
+level = "info"
+output = "stdout"
+max_size = 100
+max_backups = 3
+max_age = 7
+compress = true
+
+[service]
+name = "mbsscaner_demo"
+display_name = "MBS Scanner Byte Order Demo"
+description = "Demonstrates different byte order configurations"

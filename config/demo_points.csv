@@ -1,0 +1,7 @@
+name,address,data_type,register_type,length,scale,unit,description
+temperature_001,0,float32,holding_register,2,0.1,°C,温度传感器001
+pressure_001,2,float32,holding_register,2,0.01,kPa,压力传感器001
+flow_rate_001,4,float32,holding_register,2,0.001,m³/h,流量传感器001
+status_001,6,uint16,holding_register,1,1,,设备状态001
+alarm_001,7,uint16,holding_register,1,1,,报警代码001
+counter_001,8,uint32,holding_register,2,1,次,计数器001

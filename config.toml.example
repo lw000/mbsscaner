@@ -1,0 +1,82 @@
+# MBS Scanner Configuration File
+# Modbus数据采集服务配置文件
+
+# 服务配置
+[service]
+name = "mbsscaner"
+display_name = "MBS Scanner Service"
+description = "Modbus Data Scanner Service with Kafka Integration"
+
+# Modbus设备配置
+[modbus]
+# 可以配置多个Modbus设备
+
+# 设备1示例：温度传感器
+[[modbus.devices]]
+name = "temperature_sensors"
+host = "192.168.1.100"
+port = 502
+slave_id = 1
+timeout = 5          # 连接超时时间（秒）
+interval = 10        # 采集间隔（秒）
+points_file = "config/temperature_points.csv"
+
+# 设备2示例：压力传感器
+[[modbus.devices]]
+name = "pressure_sensors"
+host = "192.168.1.101"
+port = 502
+slave_id = 1
+timeout = 5
+interval = 15
+points_file = "config/pressure_points.csv"
+
+# 设备3示例：流量计
+[[modbus.devices]]
+name = "flow_meters"
+host = "192.168.1.102"
+port = 502
+slave_id = 2
+timeout = 3
+interval = 5
+points_file = "config/flow_points.csv"
+
+# Kafka配置
+[kafka]
+# Kafka代理地址
+brokers = ["localhost:9092", "localhost:9093"]
+
+# Kafka主题
+topic = "modbus-data"
+
+# 数据压缩类型：none, gzip, snappy, lz4, zstd
+compression = "gzip"
+
+# 批处理大小
+batch_size = 100
+
+# 刷新频率（毫秒）
+flush_frequency = 100
+
+# 日志配置
+[logger]
+# 日志级别：debug, info, warn, error
+level = "info"
+
+# 日志输出：stdout, file, both
+output = "both"
+
+# 日志文件路径（当output为file或both时）
+filename = "logs/mbsscaner.log"
+
+# 日志文件最大大小（MB）
+max_size = 100
+
+# 保留的旧日志文件数量
+max_backups = 5
+
+# 保留日志文件的最大天数
+max_age = 30
+
+# 是否压缩旧日志文件
+compress = true

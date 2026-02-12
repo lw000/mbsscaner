@@ -1,0 +1,15 @@
+name,address,data_type,register_type,length,scale,unit,description
+temp_sensor_001,0,float32,holding_register,2,0.1,°C,温度传感器001
+temp_sensor_002,2,float32,holding_register,2,0.1,°C,温度传感器002
+temp_sensor_003,4,float32,holding_register,2,0.1,°C,温度传感器003
+temp_sensor_004,6,float32,holding_register,2,0.1,°C,温度传感器004
+temp_sensor_005,8,float32,holding_register,2,0.1,°C,温度传感器005
+pressure_001,20,float32,holding_register,2,0.01,kPa,压力传感器001
+pressure_002,22,float32,holding_register,2,0.01,kPa,压力传感器002
+pressure_003,24,float32,holding_register,2,0.01,kPa,压力传感器003
+flow_rate_001,40,float32,holding_register,2,0.001,m³/h,流量传感器001
+flow_rate_002,42,float32,holding_register,2,0.001,m³/h,流量传感器002
+flow_rate_003,44,float32,holding_register,2,0.001,m³/h,流量传感器003
+status_001,60,uint16,holding_register,1,1,,设备状态
+alarm_code_001,61,uint16,holding_register,1,1,,报警代码
+counter_001,62,uint32,holding_register,2,1,次,计数器001

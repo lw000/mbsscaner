@@ -1,0 +1,12 @@
+name,address,data_type,register_type,length,scale,unit,description
+coil_001,0,bool,coil,1,1,,线圈寄存器001
+coil_002,1,bool,coil,1,1,,线圈寄存器002
+discrete_input_001,0,bool,discrete_input,1,1,,离散输入寄存器001
+discrete_input_002,1,bool,discrete_input,1,1,,离散输入寄存器002
+input_register_int16_001,0,int16,input_register,1,1,V,输入寄存器16位整数001
+input_register_int16_002,1,int16,input_register,1,1,V,输入寄存器16位整数002
+input_register_float32_001,2,float32,input_register,2,0.01,A,输入寄存器32位浮点数001
+holding_register_int16_001,100,int16,holding_register,1,1,°C,保持寄存器16位整数001
+holding_register_int16_002,101,int16,holding_register,1,1,°C,保持寄存器16位整数002
+holding_register_float32_001,102,float32,holding_register,2,0.1,bar,保持寄存器32位浮点数001
+holding_register_status_001,120,uint16,holding_register,1,1,,保持寄存器状态001
