@@ -40,7 +40,7 @@ slave_id = 1
 timeout = 3
 interval = 1
 points_file = "config/flow_points.csv"
-byte_order = "middle"  # 字节序：big（默认ABCD）、little（DCBA）、middle（CDAB）、swap（BADC）
+byte_order = "little"  # 字节序：big（默认ABCD）、little（DCBA）、middle（CDAB）、swap（BADC）
 
 # Kafka配置
 [kafka]

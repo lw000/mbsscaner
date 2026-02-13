@@ -902,11 +902,14 @@ func (c *Collector) parseRegistersForPoint(point config.Point, registers []uint1
 			return nil, fmt.Errorf("insufficient registers for float64")
 		}
 		bytes := make([]byte, 8)
-		binary.BigEndian.PutUint16(bytes[0:2], registers[0])
-		binary.BigEndian.PutUint16(bytes[2:4], registers[1])
-		binary.BigEndian.PutUint16(bytes[4:6], registers[2])
-		binary.BigEndian.PutUint16(bytes[6:8], registers[3])
-		bits := binary.BigEndian.Uint64(bytes)
+		c.putFloat64BytesWithOrder(bytes, registers, deviceByteOrder)
+		// Little Endian需要用LittleEndian解析
+		var bits uint64
+		if deviceByteOrder == config.ByteOrderLittleEndian {
+			bits = binary.LittleEndian.Uint64(bytes)
+		} else {
+			bits = binary.BigEndian.Uint64(bytes)
+		}
 		return math.Float64frombits(bits), nil
 	case config.DataTypeBool:
 		return registers[0] != 0, nil
@@ -1230,5 +1233,53 @@ func (c *Collector) getUint32WithOrder(bytes []byte, byteOrder config.ByteOrder)
 		return binary.BigEndian.Uint32(bytes)
 	default:
 		return binary.BigEndian.Uint32(bytes)
+	}
+}
+
+// putFloat64BytesWithOrder 根据字节序将float64寄存器值放入字节数组
+func (c *Collector) putFloat64BytesWithOrder(bytes []byte, registers []uint16, byteOrder config.ByteOrder) {
+	if len(registers) < 4 {
+		return
+	}
+
+	switch byteOrder {
+	case config.ByteOrderBigEndian:
+		// 大端序：ABCDEFGH
+		binary.BigEndian.PutUint16(bytes[0:2], registers[0])
+		binary.BigEndian.PutUint16(bytes[2:4], registers[1])
+		binary.BigEndian.PutUint16(bytes[4:6], registers[2])
+		binary.BigEndian.PutUint16(bytes[6:8], registers[3])
+	case config.ByteOrderLittleEndian:
+		// 小端序：HGFEDCBA
+		// 对每个寄存器进行字节交换
+		swappedReg0 := (registers[0] >> 8) | ((registers[0] & 0xFF) << 8)
+		swappedReg1 := (registers[1] >> 8) | ((registers[1] & 0xFF) << 8)
+		swappedReg2 := (registers[2] >> 8) | ((registers[2] & 0xFF) << 8)
+		swappedReg3 := (registers[3] >> 8) | ((registers[3] & 0xFF) << 8)
+		// 按小端序存储
+		binary.LittleEndian.PutUint16(bytes[0:2], swappedReg0)
+		binary.LittleEndian.PutUint16(bytes[2:4], swappedReg1)
+		binary.LittleEndian.PutUint16(bytes[4:6], swappedReg2)
+		binary.LittleEndian.PutUint16(bytes[6:8], swappedReg3)
+	case config.ByteOrderSwap:
+		// 字节交换：每个寄存器内字节交换
+		temp0 := make([]byte, 2)
+		temp1 := make([]byte, 2)
+		temp2 := make([]byte, 2)
+		temp3 := make([]byte, 2)
+		binary.BigEndian.PutUint16(temp0, registers[0])
+		binary.BigEndian.PutUint16(temp1, registers[1])
+		binary.BigEndian.PutUint16(temp2, registers[2])
+		binary.BigEndian.PutUint16(temp3, registers[3])
+		bytes[0], bytes[1] = temp0[1], temp0[0]
+		bytes[2], bytes[3] = temp1[1], temp1[0]
+		bytes[4], bytes[5] = temp2[1], temp2[0]
+		bytes[6], bytes[7] = temp3[1], temp3[0]
+	case config.ByteOrderMiddleEndian:
+		// 中端序：CDABEFGH
+		binary.BigEndian.PutUint16(bytes[0:2], registers[2])
+		binary.BigEndian.PutUint16(bytes[2:4], registers[3])
+		binary.BigEndian.PutUint16(bytes[4:6], registers[0])
+		binary.BigEndian.PutUint16(bytes[6:8], registers[1])
 	}
 }
