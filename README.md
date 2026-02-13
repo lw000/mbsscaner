@@ -417,16 +417,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### Community
 
-- [GitHub Issues](https://github.com/your-org/mbsscaner/issues)
-- [Discussions](https://github.com/your-org/mbsscaner/discussions)
-- [Wiki](https://github.com/your-org/mbsscaner/wiki)
+- [GitHub Issues](https://github.com/lw000/mbsscaner/issues)
+- [Discussions](https://github.com/lw000/mbsscaner/discussions)
+- [Wiki](https://github.com/lw000/mbsscaner/wiki)
 
 ### Professional Support
 
 For enterprise support and custom development:
-- 📧 support@your-company.com
-- 🌐 https://your-company.com/mbsscaner
-- 💬 [Schedule a consultation](https://calendly.com/your-company/mbsscaner)
+- 📧 support@clongg.com
+- 🌐 https://clongg.com/mbsscaner
+- 💬 [Schedule a consultation](https://calendly.com/clongg/mbsscaner)
 
 ---
 
