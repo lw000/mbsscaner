@@ -16,15 +16,28 @@ A high-performance Modbus data collection service with Kafka integration, design
 - **Smart Connection Management**: Persistent connections with auto-reconnection and retry logic
 
 ### **🌐 Enterprise Kafka Integration**
+- **Optional Enable/Disable**: Control Kafka service via configuration switch
 - **High-Performance Producer**: Configurable batching, compression (gzip, snappy, lz4, zstd)
 - **Optimized Message Format**: Object-based JSON structure for minimal payload size
 - **Error Resilience**: Automatic retry, backoff strategies, and error reporting
 - **Production-Ready**: Tested under high-throughput industrial environments
 
+### **🌐 HTTP REST API**
+- **Real-time Control**: Read and write Modbus points via HTTP API
+- **Health Monitoring**: Built-in health check endpoint
+- **Gin Framework**: High-performance HTTP server with minimal overhead
+- **Thread-Safe**: All Modbus operations are protected with mutex locks
+
 ### **🔧 Device Compatibility**
 - **4 Byte Order Modes**: Big Endian, Little Endian, Swap, Middle Endian for device-specific compatibility
 - **Vendor-Specific Support**: Optimized for Siemens, Omron, Schneider, Mitsubishi PLCs
 - **Flexible Configuration**: Device-level settings with CSV point definitions
+
+### **✏️ Data Write Support**
+- **Write to Holding Registers**: Support int16/uint16/int32/uint32/float32/float64 types
+- **Write to Coils**: Boolean value control
+- **Byte Order Handling**: Automatic byte order conversion during write operations
+- **Thread-Safe**: Protected concurrent read/write operations
 
 ### **🛠️ Production Features**
 - **Cross-Platform Service**: Windows service and Linux daemon support
@@ -108,12 +121,19 @@ interval = 2
 points_file = "config/production_points.csv"
 byte_order = "big"
 
+# Kafka配置（可选，enable设为false可禁用）
 [kafka]
+enable = true                              # 是否启用Kafka服务
 brokers = ["localhost:9092"]
 topic = "modbus_data"
 compression = "gzip"
 batch_size = 100
 flush_frequency = 1000
+
+# HTTP API配置（可选）
+[http]
+enable = true                              # 是否启用HTTP服务器
+addr = ":8080"                             # HTTP服务地址
 
 [logger]
 level = "info"
@@ -149,6 +169,24 @@ status_flag,200,bool,coil,1,,Equipment status flag
 | `interval` | int | Data collection interval in seconds | 5 |
 | `points_file` | string | CSV file with point definitions | - |
 | `byte_order` | string | Byte order: "big", "little", "swap", "middle" | "big" |
+
+### Kafka Configuration
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `enable` | bool | Enable/disable Kafka integration | false |
+| `brokers` | []string | Kafka broker addresses (required if enabled) | - |
+| `topic` | string | Kafka topic name (required if enabled) | - |
+| `compression` | string | Compression type: "none", "gzip", "snappy", "lz4", "zstd" | "none" |
+| `batch_size` | int | Number of messages to batch before sending | 100 |
+| `flush_frequency` | int | Maximum time to wait before sending batch (ms) | 100 |
+
+### HTTP Configuration
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `enable` | bool | Enable HTTP REST API server | false |
+| `addr` | string | HTTP server bind address | ":8080" |
 
 ### Byte Order Configuration
 
@@ -244,6 +282,93 @@ The optimized message format minimizes bandwidth usage:
 }
 ```
 
+## 🌐 HTTP API
+
+When HTTP is enabled, the service exposes a REST API for real-time Modbus operations:
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/api/v1/read-point/:name` | Read a specific point value |
+| POST | `/api/v1/write-point` | Write value to a point |
+| GET | `/api/v1/points` | List all configured points |
+
+### Read Point
+
+```bash
+# Read value from a point
+GET /api/v1/read-point/temperature_1
+
+# Response
+{
+  "success": true,
+  "data": {
+    "name": "temperature_1",
+    "value": 23.5
+  }
+}
+```
+
+### Write Point
+
+```bash
+# Write value to a holding register
+POST /api/v1/write-point
+Content-Type: application/json
+
+{
+  "name": "setpoint_temperature",
+  "value": 25.0
+}
+
+# Response
+{
+  "success": true,
+  "message": "point written successfully",
+  "data": {
+    "name": "setpoint_temperature",
+    "value": 25.0
+  }
+}
+```
+
+### Write to Coil
+
+```bash
+# Control a coil (boolean output)
+POST /api/v1/write-point
+Content-Type: application/json
+
+{
+  "name": "motor_start",
+  "value": true
+}
+
+# Response
+{
+  "success": true,
+  "message": "point written successfully",
+  "data": {
+    "name": "motor_start",
+    "value": true
+  }
+}
+```
+
+### Supported Write Data Types
+
+| Data Type | Example Value | Registers |
+|-----------|--------------|-----------|
+| `int16` | `1234` | 1 |
+| `uint16` | `1234` | 1 |
+| `int32` | `123456` | 2 |
+| `uint32` | `123456` | 2 |
+| `float32` | `25.5` | 2 |
+| `float64` | `123.456789` | 4 |
+| `bool` (coil) | `true`/`false` | 1 |
+
 ## 📊 Performance Characteristics
 
 ### Throughput Metrics
@@ -302,8 +427,15 @@ byte_order = "middle"    # For Japanese PLCs
 
 **Solutions**:
 ```toml
-# Verify broker configuration
+# If you don't need Kafka, disable it
+[kafka]
+enable = false
+
+# If Kafka is enabled, verify broker configuration
+[kafka]
+enable = true
 brokers = ["kafka-broker1:9092", "kafka-broker2:9092"]
+topic = "modbus-data"
 
 # Check topic exists
 kafka-topics.sh --bootstrap-server localhost:9092 --list
@@ -311,6 +443,21 @@ kafka-topics.sh --bootstrap-server localhost:9092 --list
 # Test with simpler configuration
 compression = "none"
 batch_size = 1
+```
+
+#### HTTP API Not Responding
+
+**Problem**: Cannot access HTTP endpoints
+
+**Solutions**:
+```toml
+# Ensure HTTP is enabled
+[http]
+enable = true
+addr = ":8080"  # Default port
+
+# Check firewall settings
+curl http://localhost:8080/health
 ```
 
 ### Debug Mode
@@ -364,28 +511,35 @@ GOOS=windows GOARCH=amd64 go build -o build/mbsscaner.exe
 
 ```
 mbsscaner/
-├── main.go                 # Application entry point
-├── config/                 # Configuration management
-│   ├── config.go          # TOML configuration structures
-│   └── points.go          # CSV point configuration
-├── pkg/                   # Core functionality
-│   ├── modbus/            # Modbus data collection
-│   │   └── collector.go   # Advanced collector implementation
-│   ├── kafka/             # Kafka integration
-│   │   └── producer.go     # Kafka producer with optimization
-│   ├── logger/            # Structured logging
-│   │   └── logger.go      # Zap-based logging configuration
-│   └── service/           # Service management
-│       └── service.go     # Cross-platform service support
-├── config/                # Configuration files
-│   ├── *.toml            # Device configurations
-│   └── *.csv             # Point definitions
-├── docs/                  # Documentation
-│   └── byte_order.md     # Byte order detailed guide
-├── build/                 # Build output
-├── logs/                  # Runtime logs
-├── Makefile              # Unix build script
-└── build.bat             # Windows build script
+├── main.go                      # Application entry point
+├── config/                      # Configuration management
+│   ├── config.go               # TOML configuration structures
+│   └── points.go               # CSV point configuration
+├── pkg/                        # Core functionality
+│   ├── modbus/                 # Modbus data collection
+│   │   ├── collector.go        # Advanced collector with byte order support
+│   │   ├── collector_manager.go # Point registration and management
+│   │   └── point_cache.go      # Point value caching
+│   ├── kafka/                  # Kafka integration
+│   │   └── producer.go         # Kafka producer with optimization
+│   ├── http/                   # HTTP REST API
+│   │   └── server.go           # Gin-based HTTP server
+│   ├── logger/                 # Structured logging
+│   │   └── logger.go           # Zap-based logging configuration
+│   └── service/                # Service management
+│       └── service.go          # Cross-platform service support
+├── config/                     # Configuration files
+│   ├── config.toml            # Main configuration
+│   ├── config.toml.example    # Example configuration
+│   └── *.csv                  # Point definitions
+├── docs/                       # Documentation
+│   └── byte_order.md          # Byte order detailed guide
+├── build/                      # Build output
+├── logs/                       # Runtime logs
+├── Makefile                   # Unix build script
+├── build.bat                  # Windows build script
+├── README.md                  # This file
+└── go.mod                     # Go module definition
 ```
 
 ### Contributing
