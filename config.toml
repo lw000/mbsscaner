@@ -44,6 +44,7 @@ byte_order = "little"  # 字节序：big（默认ABCD）、little（DCBA）、mi
 
 # Kafka配置
 [kafka]
+enable = true               # 是否启用Kafka
 # Kafka代理地址
 brokers = ["172.31.254.89:9092", "172.31.254.89:9096", "172.31.254.89:9097"]
 
@@ -62,7 +63,7 @@ flush_frequency = 100
 # 日志配置
 [logger]
 # 日志级别：debug, info, warn, error
-level = "info"
+level = "debug"
 
 # 日志输出：stdout, file, both
 output = "both"
@@ -81,3 +82,8 @@ max_age = 30
 
 # 是否压缩旧日志文件
 compress = true
+
+# HTTP服务器配置
+[http]
+enable = true               # 是否启用HTTP服务器
+addr = ":8080"            # HTTP服务器地址

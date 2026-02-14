@@ -23,6 +23,7 @@ type Config struct {
 	Kafka   KafkaConfig   `toml:"kafka"`
 	Logger  LoggerConfig  `toml:"logger"`
 	Service ServiceConfig `toml:"service"`
+	HTTP    HTTPConfig    `toml:"http"`
 }
 
 // ModbusConfig Modbus配置
@@ -44,6 +45,7 @@ type ModbusDevice struct {
 
 // KafkaConfig Kafka配置
 type KafkaConfig struct {
+	Enable         bool     `toml:"enable"` // 是否启用Kafka
 	Brokers        []string `toml:"brokers"`
 	Topic          string   `toml:"topic"`
 	Compression    string   `toml:"compression"` // none, gzip, snappy, lz4, zstd
@@ -67,6 +69,12 @@ type ServiceConfig struct {
 	Name        string `toml:"name"`
 	DisplayName string `toml:"display_name"`
 	Description string `toml:"description"`
+}
+
+// HTTPConfig HTTP服务器配置
+type HTTPConfig struct {
+	Enable bool   `toml:"enable"` // 是否启用HTTP服务器
+	Addr   string `toml:"addr"`   // HTTP服务器地址
 }
 
 // LoadConfig 加载配置文件
@@ -113,18 +121,20 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// 验证Kafka配置
-	if len(c.Kafka.Brokers) == 0 {
-		return fmt.Errorf("at least one kafka broker must be configured")
-	}
-	if c.Kafka.Topic == "" {
-		return fmt.Errorf("kafka topic cannot be empty")
-	}
-	if c.Kafka.BatchSize <= 0 {
-		c.Kafka.BatchSize = 100 // 默认100
-	}
-	if c.Kafka.FlushFrequency <= 0 {
-		c.Kafka.FlushFrequency = 100 // 默认100ms
+	// 验证Kafka配置（仅当启用时）
+	if c.Kafka.Enable {
+		if len(c.Kafka.Brokers) == 0 {
+			return fmt.Errorf("at least one kafka broker must be configured")
+		}
+		if c.Kafka.Topic == "" {
+			return fmt.Errorf("kafka topic cannot be empty")
+		}
+		if c.Kafka.BatchSize <= 0 {
+			c.Kafka.BatchSize = 100 // 默认100
+		}
+		if c.Kafka.FlushFrequency <= 0 {
+			c.Kafka.FlushFrequency = 100 // 默认100ms
+		}
 	}
 
 	// 验证日志配置

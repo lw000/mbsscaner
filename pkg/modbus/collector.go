@@ -19,7 +19,8 @@ type Collector struct {
 	deviceName  string
 	device      config.ModbusDevice
 	connected   bool
-	mutex       sync.RWMutex
+	stateMutex  sync.RWMutex
+	opMutex     sync.Mutex
 	lastConnect time.Time
 	retryCount  int
 	maxRetries  int
@@ -71,8 +72,8 @@ func NewCollector(device config.ModbusDevice, logger *zap.Logger) (*Collector, e
 
 // Connect 建立连接
 func (c *Collector) Connect() error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.stateMutex.Lock()
+	defer c.stateMutex.Unlock()
 
 	if c.connected {
 		return nil
@@ -115,8 +116,8 @@ func (c *Collector) Connect() error {
 
 // Disconnect 断开连接
 func (c *Collector) Disconnect() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.stateMutex.Lock()
+	defer c.stateMutex.Unlock()
 
 	if !c.connected {
 		return
@@ -136,8 +137,8 @@ func (c *Collector) Disconnect() {
 
 // IsConnected 检查连接状态
 func (c *Collector) IsConnected() bool {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.stateMutex.RLock()
+	defer c.stateMutex.RUnlock()
 	return c.connected
 }
 
@@ -161,9 +162,9 @@ func (c *Collector) ensureConnected() error {
 			return nil
 		}
 		// 连接已断开，标记为未连接
-		c.mutex.Lock()
+		c.stateMutex.Lock()
 		c.connected = false
-		c.mutex.Unlock()
+		c.stateMutex.Unlock()
 		c.logger.Warn("connection lost, attempting to reconnect",
 			zap.String("device", c.deviceName))
 	}
@@ -215,6 +216,10 @@ func (c *Collector) CollectPoints(points []config.Point) ([]PointValue, error) {
 		}
 		return values, nil
 	}
+
+	// 加锁保护客户端操作
+	c.opMutex.Lock()
+	defer c.opMutex.Unlock()
 
 	// 按寄存器类型和连续地址对点位进行分组
 	batchGroups := c.groupPointsByRegisterType(points)
@@ -958,6 +963,34 @@ func (c *Collector) collectSinglePoint(point config.Point) (interface{}, error) 
 	}
 }
 
+// ReadSinglePoint 读取单个点位数据（公开方法）
+func (c *Collector) ReadSinglePoint(point config.Point) (PointValue, error) {
+	// 确保连接可用
+	if err := c.ensureConnected(); err != nil {
+		return PointValue{}, fmt.Errorf("failed to connect: %w", err)
+	}
+
+	// 加锁保护客户端操作
+	c.opMutex.Lock()
+	defer c.opMutex.Unlock()
+
+	value, err := c.collectSinglePoint(point)
+	if err != nil {
+		return PointValue{}, err
+	}
+
+	return PointValue{
+		Name:        point.Name,
+		Value:       value,
+		DataType:    string(point.DataType),
+		Unit:        point.Unit,
+		Description: point.Description,
+		Timestamp:   time.Now(),
+		Quality:     "GOOD",
+		Device:      c.deviceName,
+	}, nil
+}
+
 // readInt16 读取int16数据
 func (c *Collector) readInt16(address uint16, registerType config.RegisterType) (int16, error) {
 	regType, err := c.getModbusRegisterType(registerType)
@@ -990,21 +1023,16 @@ func (c *Collector) readInt32(address uint16, registerType config.RegisterType) 
 	if err != nil {
 		return 0, err
 	}
-	// 读取两个连续的寄存器
-	reg1, err := c.client.ReadRegister(address, regType)
-	if err != nil {
-		return 0, err
-	}
-	reg2, err := c.client.ReadRegister(address+1, regType)
+	// 批量读取两个连续的寄存器
+	registers, err := c.client.ReadRegisters(address, 2, regType)
 	if err != nil {
 		return 0, err
 	}
 
-	// 假设大端序
+	// 使用设备配置的字节序
 	bytes := make([]byte, 4)
-	binary.BigEndian.PutUint16(bytes[0:2], reg1)
-	binary.BigEndian.PutUint16(bytes[2:4], reg2)
-	return int32(binary.BigEndian.Uint32(bytes)), nil
+	c.putBytesWithOrder(bytes, registers, c.device.ByteOrder)
+	return c.getInt32WithOrder(bytes, c.device.ByteOrder), nil
 }
 
 // readUInt32 读取uint32数据
@@ -1013,21 +1041,16 @@ func (c *Collector) readUInt32(address uint16, registerType config.RegisterType)
 	if err != nil {
 		return 0, err
 	}
-	// 读取两个连续的寄存器
-	reg1, err := c.client.ReadRegister(address, regType)
-	if err != nil {
-		return 0, err
-	}
-	reg2, err := c.client.ReadRegister(address+1, regType)
+	// 批量读取两个连续的寄存器
+	registers, err := c.client.ReadRegisters(address, 2, regType)
 	if err != nil {
 		return 0, err
 	}
 
-	// 假设大端序
+	// 使用设备配置的字节序
 	bytes := make([]byte, 4)
-	binary.BigEndian.PutUint16(bytes[0:2], reg1)
-	binary.BigEndian.PutUint16(bytes[2:4], reg2)
-	return binary.BigEndian.Uint32(bytes), nil
+	c.putBytesWithOrder(bytes, registers, c.device.ByteOrder)
+	return c.getUint32WithOrder(bytes, c.device.ByteOrder), nil
 }
 
 // readFloat32 读取float32数据
@@ -1036,21 +1059,16 @@ func (c *Collector) readFloat32(address uint16, registerType config.RegisterType
 	if err != nil {
 		return 0, err
 	}
-	// 读取两个连续的寄存器
-	reg1, err := c.client.ReadRegister(address, regType)
-	if err != nil {
-		return 0, err
-	}
-	reg2, err := c.client.ReadRegister(address+1, regType)
+	// 批量读取两个连续的寄存器
+	registers, err := c.client.ReadRegisters(address, 2, regType)
 	if err != nil {
 		return 0, err
 	}
 
-	// 假设大端序，IEEE 754格式
+	// 使用设备配置的字节序
 	bytes := make([]byte, 4)
-	binary.BigEndian.PutUint16(bytes[0:2], reg1)
-	binary.BigEndian.PutUint16(bytes[2:4], reg2)
-	bits := binary.BigEndian.Uint32(bytes)
+	c.putBytesWithOrder(bytes, registers, c.device.ByteOrder)
+	bits := c.getUint32WithOrder(bytes, c.device.ByteOrder)
 	return math.Float32frombits(bits), nil
 }
 
@@ -1060,23 +1078,22 @@ func (c *Collector) readFloat64(address uint16, registerType config.RegisterType
 	if err != nil {
 		return 0, err
 	}
-	// 读取四个连续的寄存器
-	regs := make([]uint16, 4)
-	for i := 0; i < 4; i++ {
-		reg, err := c.client.ReadRegister(address+uint16(i), regType)
-		if err != nil {
-			return 0, err
-		}
-		regs[i] = reg
+	// 批量读取四个连续的寄存器
+	registers, err := c.client.ReadRegisters(address, 4, regType)
+	if err != nil {
+		return 0, err
 	}
 
-	// 假设大端序，IEEE 754格式
+	// 使用设备配置的字节序
 	bytes := make([]byte, 8)
-	binary.BigEndian.PutUint16(bytes[0:2], regs[0])
-	binary.BigEndian.PutUint16(bytes[2:4], regs[1])
-	binary.BigEndian.PutUint16(bytes[4:6], regs[2])
-	binary.BigEndian.PutUint16(bytes[6:8], regs[3])
-	bits := binary.BigEndian.Uint64(bytes)
+	c.putFloat64BytesWithOrder(bytes, registers, c.device.ByteOrder)
+	// Float64解析需要特殊处理
+	var bits uint64
+	if c.device.ByteOrder == config.ByteOrderLittleEndian {
+		bits = binary.LittleEndian.Uint64(bytes)
+	} else {
+		bits = binary.BigEndian.Uint64(bytes)
+	}
 	return math.Float64frombits(bits), nil
 }
 
@@ -1136,8 +1153,8 @@ func (c *Collector) Close() error {
 
 // GetConnectionStats 获取连接统计信息
 func (c *Collector) GetConnectionStats() map[string]interface{} {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.stateMutex.RLock()
+	defer c.stateMutex.RUnlock()
 
 	return map[string]interface{}{
 		"device":       c.deviceName,
@@ -1282,4 +1299,437 @@ func (c *Collector) putFloat64BytesWithOrder(bytes []byte, registers []uint16, b
 		binary.BigEndian.PutUint16(bytes[4:6], registers[0])
 		binary.BigEndian.PutUint16(bytes[6:8], registers[1])
 	}
+}
+
+// WritePoint 写入点位值到设备
+func (c *Collector) WritePoint(point config.Point, value interface{}) error {
+	// 确保连接
+	if err := c.ensureConnected(); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+
+	// 加锁保护客户端操作
+	c.opMutex.Lock()
+	defer c.opMutex.Unlock()
+
+	// 根据寄存器类型分别处理
+	switch point.RegisterType {
+	case config.RegisterTypeCoil:
+		return c.writeCoil(point, value)
+	case config.RegisterTypeHoldingRegister:
+		return c.writeHoldingRegister(point, value)
+	default:
+		return fmt.Errorf("unsupported register type for write: %s (only Coil and HoldingRegister are writable)", point.RegisterType)
+	}
+}
+
+// writeCoil 写入线圈
+func (c *Collector) writeCoil(point config.Point, value interface{}) error {
+	var boolValue bool
+	switch v := value.(type) {
+	case bool:
+		boolValue = v
+	case int, int8, int16, int32, int64:
+		boolValue = toInt64(v) != 0
+	case uint, uint8, uint16, uint32, uint64:
+		boolValue = toUint64(v) != 0
+	case float32, float64:
+		boolValue = toFloat64(v) != 0
+	default:
+		return fmt.Errorf("unsupported value type for coil: %T", value)
+	}
+
+	err := c.client.WriteCoil(point.Address, boolValue)
+	if err != nil {
+		return fmt.Errorf("failed to write coil: %w", err)
+	}
+
+	c.logger.Info("coil written successfully",
+		zap.String("device", c.deviceName),
+		zap.String("point", point.Name),
+		zap.Bool("value", boolValue))
+
+	return nil
+}
+
+// writeHoldingRegister 写入保持寄存器
+func (c *Collector) writeHoldingRegister(point config.Point, value interface{}) error {
+	// 根据数据类型转换值
+	var registers []uint16
+	var err error
+
+	switch point.DataType {
+	case config.DataTypeInt16:
+		val := toInt16(value)
+		registers = c.int16ToRegisters(val, c.device.ByteOrder)
+
+	case config.DataTypeUInt16:
+		val := toUint16(value)
+		registers = c.uint16ToRegisters(val, c.device.ByteOrder)
+
+	case config.DataTypeInt32:
+		val := toInt32(value)
+		registers = c.int32ToRegisters(val, c.device.ByteOrder)
+
+	case config.DataTypeUInt32:
+		val := toUint32(value)
+		registers = c.uint32ToRegisters(val, c.device.ByteOrder)
+
+	case config.DataTypeFloat32:
+		val := toFloat32(value)
+		registers = c.float32ToRegisters(val, c.device.ByteOrder)
+
+	case config.DataTypeFloat64:
+		val := toFloat64(value)
+		registers = c.float64ToRegisters(val, c.device.ByteOrder)
+
+	default:
+		return fmt.Errorf("unsupported data type: %s (only int16/uint16/int32/uint32/float32/float64 are writable for holding register)", point.DataType)
+	}
+
+	// 写入寄存器
+	err = c.client.WriteRegisters(point.Address, registers)
+	if err != nil {
+		return fmt.Errorf("failed to write register: %w", err)
+	}
+
+	c.logger.Info("holding register written successfully",
+		zap.String("device", c.deviceName),
+		zap.String("point", point.Name),
+		zap.Any("value", value))
+
+	return nil
+}
+
+// toString 转换为string
+func toString(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case []byte:
+		return string(val)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
+}
+
+// toInt64 转换为int64
+func toInt64(v interface{}) int64 {
+	switch val := v.(type) {
+	case int:
+		return int64(val)
+	case int8:
+		return int64(val)
+	case int16:
+		return int64(val)
+	case int32:
+		return int64(val)
+	case int64:
+		return val
+	case uint:
+		return int64(val)
+	case uint8:
+		return int64(val)
+	case uint16:
+		return int64(val)
+	case uint32:
+		return int64(val)
+	case uint64:
+		return int64(val)
+	case float32:
+		return int64(val)
+	case float64:
+		return int64(val)
+	default:
+		return 0
+	}
+}
+
+// toUint64 转换为uint64
+func toUint64(v interface{}) uint64 {
+	switch val := v.(type) {
+	case int:
+		return uint64(val)
+	case int8:
+		return uint64(val)
+	case int16:
+		return uint64(val)
+	case int32:
+		return uint64(val)
+	case int64:
+		return uint64(val)
+	case uint:
+		return uint64(val)
+	case uint8:
+		return uint64(val)
+	case uint16:
+		return uint64(val)
+	case uint32:
+		return uint64(val)
+	case uint64:
+		return val
+	case float32:
+		return uint64(val)
+	case float64:
+		return uint64(val)
+	default:
+		return 0
+	}
+}
+
+// toInt16 转换为int16
+func toInt16(v interface{}) int16 {
+	return int16(toInt64(v))
+}
+
+// toUint16 转换为uint16
+func toUint16(v interface{}) uint16 {
+	return uint16(toUint64(v))
+}
+
+// toInt32 转换为int32
+func toInt32(v interface{}) int32 {
+	return int32(toInt64(v))
+}
+
+// toUint32 转换为uint32
+func toUint32(v interface{}) uint32 {
+	return uint32(toUint64(v))
+}
+
+// toFloat32 转换为float32
+func toFloat32(v interface{}) float32 {
+	switch val := v.(type) {
+	case float32:
+		return val
+	case float64:
+		return float32(val)
+	case int, int8, int16, int32, int64:
+		return float32(toInt64(val))
+	case uint, uint8, uint16, uint32, uint64:
+		return float32(toUint64(val))
+	default:
+		return 0
+	}
+}
+
+// toFloat64 转换为float64
+func toFloat64(v interface{}) float64 {
+	switch val := v.(type) {
+	case float32:
+		return float64(val)
+	case float64:
+		return val
+	case int, int8, int16, int32, int64:
+		return float64(toInt64(val))
+	case uint, uint8, uint16, uint32, uint64:
+		return float64(toUint64(val))
+	default:
+		return 0
+	}
+}
+
+// int32ToRegisters 将int32值转换为寄存器数组（根据字节序）
+func (c *Collector) int32ToRegisters(value int32, byteOrder config.ByteOrder) []uint16 {
+	bytes := make([]byte, 4)
+
+	switch byteOrder {
+	case config.ByteOrderBigEndian:
+		binary.BigEndian.PutUint32(bytes, uint32(value))
+	case config.ByteOrderLittleEndian:
+		binary.BigEndian.PutUint32(bytes, uint32(value))
+		regs := []uint16{
+			binary.BigEndian.Uint16(bytes[2:4]),
+			binary.BigEndian.Uint16(bytes[0:2]),
+		}
+		regs[0] = (regs[0] >> 8) | ((regs[0] & 0xFF) << 8)
+		regs[1] = (regs[1] >> 8) | ((regs[1] & 0xFF) << 8)
+		return regs
+	case config.ByteOrderSwap:
+		binary.BigEndian.PutUint32(bytes, uint32(value))
+		bytes = c.swapBytesInRegisters(bytes)
+	case config.ByteOrderMiddleEndian:
+		binary.BigEndian.PutUint32(bytes, uint32(value))
+		bytes = c.swapRegisterPairs(bytes)
+	default:
+		binary.BigEndian.PutUint32(bytes, uint32(value))
+	}
+
+	return []uint16{
+		binary.BigEndian.Uint16(bytes[0:2]),
+		binary.BigEndian.Uint16(bytes[2:4]),
+	}
+}
+
+// uint32ToRegisters 将uint32值转换为寄存器数组（根据字节序）
+func (c *Collector) uint32ToRegisters(value uint32, byteOrder config.ByteOrder) []uint16 {
+	bytes := make([]byte, 4)
+
+	switch byteOrder {
+	case config.ByteOrderBigEndian:
+		binary.BigEndian.PutUint32(bytes, value)
+	case config.ByteOrderLittleEndian:
+		binary.BigEndian.PutUint32(bytes, value)
+		regs := []uint16{
+			binary.BigEndian.Uint16(bytes[2:4]),
+			binary.BigEndian.Uint16(bytes[0:2]),
+		}
+		regs[0] = (regs[0] >> 8) | ((regs[0] & 0xFF) << 8)
+		regs[1] = (regs[1] >> 8) | ((regs[1] & 0xFF) << 8)
+		return regs
+	case config.ByteOrderSwap:
+		binary.BigEndian.PutUint32(bytes, value)
+		bytes = c.swapBytesInRegisters(bytes)
+	case config.ByteOrderMiddleEndian:
+		binary.BigEndian.PutUint32(bytes, value)
+		bytes = c.swapRegisterPairs(bytes)
+	default:
+		binary.BigEndian.PutUint32(bytes, value)
+	}
+
+	return []uint16{
+		binary.BigEndian.Uint16(bytes[0:2]),
+		binary.BigEndian.Uint16(bytes[2:4]),
+	}
+}
+
+// float32ToRegisters 将float32值转换为寄存器数组（根据字节序）
+func (c *Collector) float32ToRegisters(value float32, byteOrder config.ByteOrder) []uint16 {
+	bits := math.Float32bits(value)
+	bytes := make([]byte, 4)
+
+	switch byteOrder {
+	case config.ByteOrderBigEndian:
+		binary.BigEndian.PutUint32(bytes, bits)
+	case config.ByteOrderLittleEndian:
+		binary.BigEndian.PutUint32(bytes, bits)
+		regs := []uint16{
+			binary.BigEndian.Uint16(bytes[2:4]),
+			binary.BigEndian.Uint16(bytes[0:2]),
+		}
+		// 对每个寄存器进行字节交换（Little Endian需要）
+		regs[0] = (regs[0] >> 8) | ((regs[0] & 0xFF) << 8)
+		regs[1] = (regs[1] >> 8) | ((regs[1] & 0xFF) << 8)
+		return regs
+	case config.ByteOrderSwap:
+		binary.BigEndian.PutUint32(bytes, bits)
+		bytes = c.swapBytesInRegisters(bytes)
+	case config.ByteOrderMiddleEndian:
+		binary.BigEndian.PutUint32(bytes, bits)
+		bytes = c.swapRegisterPairs(bytes)
+	default:
+		binary.BigEndian.PutUint32(bytes, bits)
+	}
+
+	return []uint16{
+		binary.BigEndian.Uint16(bytes[0:2]),
+		binary.BigEndian.Uint16(bytes[2:4]),
+	}
+}
+
+// float64ToRegisters 将float64值转换为寄存器数组（根据字节序）
+func (c *Collector) float64ToRegisters(value float64, byteOrder config.ByteOrder) []uint16 {
+	bits := math.Float64bits(value)
+	bytes := make([]byte, 8)
+
+	switch byteOrder {
+	case config.ByteOrderBigEndian:
+		binary.BigEndian.PutUint64(bytes, bits)
+	case config.ByteOrderLittleEndian:
+		binary.BigEndian.PutUint64(bytes, bits)
+		regs := []uint16{
+			binary.BigEndian.Uint16(bytes[6:8]),
+			binary.BigEndian.Uint16(bytes[4:6]),
+			binary.BigEndian.Uint16(bytes[2:4]),
+			binary.BigEndian.Uint16(bytes[0:2]),
+		}
+		// 对每个寄存器进行字节交换（Little Endian需要）
+		for i := range regs {
+			regs[i] = (regs[i] >> 8) | ((regs[i] & 0xFF) << 8)
+		}
+		return regs
+	case config.ByteOrderSwap:
+		binary.BigEndian.PutUint64(bytes, bits)
+		bytes = c.swapBytesInRegisters(bytes)
+	case config.ByteOrderMiddleEndian:
+		binary.BigEndian.PutUint64(bytes, bits)
+		bytes = c.swapRegisterPairs64(bytes)
+	default:
+		binary.BigEndian.PutUint64(bytes, bits)
+	}
+
+	return []uint16{
+		binary.BigEndian.Uint16(bytes[0:2]),
+		binary.BigEndian.Uint16(bytes[2:4]),
+		binary.BigEndian.Uint16(bytes[4:6]),
+		binary.BigEndian.Uint16(bytes[6:8]),
+	}
+}
+
+// swapBytesInRegisters 交换字节（每个16位寄存器内的字节交换）
+func (c *Collector) swapBytesInRegisters(bytes []byte) []byte {
+	result := make([]byte, len(bytes))
+	for i := 0; i < len(bytes); i += 2 {
+		if i+1 < len(bytes) {
+			result[i] = bytes[i+1]
+			result[i+1] = bytes[i]
+		}
+	}
+	return result
+}
+
+// swapRegisterPairs 交换32位值的两个寄存器（用于Middle Endian）
+func (c *Collector) swapRegisterPairs(bytes []byte) []byte {
+	result := make([]byte, 4)
+	result[0] = bytes[2]
+	result[1] = bytes[3]
+	result[2] = bytes[0]
+	result[3] = bytes[1]
+	return result
+}
+
+// swapRegisterPairs64 交换64位值的四个寄存器（用于Middle Endian）
+func (c *Collector) swapRegisterPairs64(bytes []byte) []byte {
+	result := make([]byte, 8)
+	result[0] = bytes[4]
+	result[1] = bytes[5]
+	result[2] = bytes[6]
+	result[3] = bytes[7]
+	result[4] = bytes[0]
+	result[5] = bytes[1]
+	result[6] = bytes[2]
+	result[7] = bytes[3]
+	return result
+}
+
+// int16ToRegisters 将int16值转换为寄存器数组（根据字节序）
+func (c *Collector) int16ToRegisters(value int16, byteOrder config.ByteOrder) []uint16 {
+	var reg uint16
+
+	switch byteOrder {
+	case config.ByteOrderLittleEndian, config.ByteOrderSwap:
+		// 字节交换
+		b := []byte{byte(value >> 8), byte(value)}
+		reg = uint16(b[0])<<8 | uint16(b[1])
+		reg = (reg >> 8) | ((reg & 0xFF) << 8)
+	default:
+		reg = uint16(value)
+	}
+
+	return []uint16{reg}
+}
+
+// uint16ToRegisters 将uint16值转换为寄存器数组（根据字节序）
+func (c *Collector) uint16ToRegisters(value uint16, byteOrder config.ByteOrder) []uint16 {
+	var reg uint16
+
+	switch byteOrder {
+	case config.ByteOrderLittleEndian, config.ByteOrderSwap:
+		// 字节交换
+		reg = (value >> 8) | ((value & 0xFF) << 8)
+	default:
+		reg = value
+	}
+
+	return []uint16{reg}
 }

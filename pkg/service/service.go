@@ -12,6 +12,7 @@ import (
 	"github.com/judwhite/go-svc"
 	"go.uber.org/zap"
 	"mbsscaner/config"
+	"mbsscaner/pkg/http"
 	"mbsscaner/pkg/kafka"
 	"mbsscaner/pkg/logger"
 	"mbsscaner/pkg/modbus"
@@ -22,6 +23,7 @@ type ModbusService struct {
 	config     *config.Config
 	logger     *zap.Logger
 	kafkaProd  *kafka.Producer
+	httpServer *http.Server
 	collectors map[string]*modbus.Collector
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -57,14 +59,33 @@ func NewService(configFile string) (*ModbusService, error) {
 func (s *ModbusService) Init(env svc.Environment) error {
 	s.logger.Info("Initializing Modbus Scanner Service")
 
-	// 创建Kafka生产者（可选，失败不影响Modbus功能）
-	prod, err := kafka.NewProducer(s.config.Kafka, s.logger)
-	if err != nil {
-		s.logger.Warn("failed to create kafka producer, continuing without kafka",
-			zap.Error(err))
-		// 不返回错误，允许继续使用Modbus功能
+	// 初始化Collector管理器
+	modbus.InitCollectorManager()
+
+	// 创建HTTP服务器（可选，失败不影响Modbus功能）
+	if s.config.HTTP.Enable {
+		s.httpServer = http.NewServer(s.logger, s.config.HTTP.Addr)
+		if err := s.httpServer.Start(); err != nil {
+			s.logger.Warn("failed to start HTTP server, continuing without HTTP",
+				zap.Error(err))
+		} else {
+			s.logger.Info("HTTP server started", zap.String("addr", s.config.HTTP.Addr))
+		}
+	}
+
+	// 创建Kafka生产者（仅当启用时）
+	if s.config.Kafka.Enable {
+		prod, err := kafka.NewProducer(s.config.Kafka, s.logger)
+		if err != nil {
+			s.logger.Warn("failed to create kafka producer, continuing without kafka",
+				zap.Error(err))
+			// 不返回错误，允许继续使用Modbus功能
+		} else {
+			s.kafkaProd = prod
+			s.logger.Info("kafka producer initialized successfully")
+		}
 	} else {
-		s.kafkaProd = prod
+		s.logger.Info("kafka is disabled, skipping kafka producer initialization")
 	}
 
 	// 创建Modbus采集器
@@ -77,6 +98,9 @@ func (s *ModbusService) Init(env svc.Environment) error {
 			continue
 		}
 		s.collectors[device.Name] = collector
+
+		// 注册collector到管理器
+		modbus.GetCollectorManager().RegisterCollector(device.Name, collector)
 
 		// 加载点位配置
 		points, err := config.LoadPoints(device.PointsFile)
@@ -94,6 +118,11 @@ func (s *ModbusService) Init(env svc.Environment) error {
 				zap.String("device", device.Name),
 				zap.Error(err))
 			continue
+		}
+
+		// 注册点位到管理器
+		for _, point := range points {
+			modbus.GetCollectorManager().RegisterPoint(point, device.Name)
 		}
 
 		s.logger.Info("loaded configuration for device",
@@ -148,6 +177,13 @@ func (s *ModbusService) Start() error {
 // Stop 实现svc.Service接口
 func (s *ModbusService) Stop() error {
 	s.logger.Info("Stopping Modbus Scanner Service")
+
+	// 关闭HTTP服务器
+	if s.httpServer != nil {
+		if err := s.httpServer.Stop(); err != nil {
+			s.logger.Error("failed to stop HTTP server", zap.Error(err))
+		}
+	}
 
 	// 取消上下文
 	if s.cancel != nil {
